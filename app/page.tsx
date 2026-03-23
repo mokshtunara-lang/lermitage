@@ -1,3 +1,5 @@
+import BookingWidget from "./booking-widget";
+
 export default function HomePage() {
   const amenities = [
     "Meals",
@@ -29,19 +31,33 @@ export default function HomePage() {
       <header className="sticky top-0 z-50 border-b border-stone-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div>
-            <div className="text-xl font-semibold tracking-wide">Lermitage Farms</div>
+            <div className="text-xl font-semibold tracking-wide">
+              Lermitage Farms
+            </div>
             <div className="text-xs uppercase tracking-[0.3em] text-stone-500">
               Luxury Nature Retreat
             </div>
           </div>
 
           <nav className="hidden gap-6 text-sm md:flex">
-            <a href="#home" className="hover:text-stone-600">Home</a>
-            <a href="#about" className="hover:text-stone-600">About</a>
-            <a href="#amenities" className="hover:text-stone-600">Amenities</a>
-            <a href="#explore" className="hover:text-stone-600">Explore</a>
-            <a href="#reserve" className="hover:text-stone-600">Reserve</a>
-            <a href="#contact" className="hover:text-stone-600">Contact</a>
+            <a href="#home" className="hover:text-stone-600">
+              Home
+            </a>
+            <a href="#about" className="hover:text-stone-600">
+              About
+            </a>
+            <a href="#amenities" className="hover:text-stone-600">
+              Amenities
+            </a>
+            <a href="#explore" className="hover:text-stone-600">
+              Explore
+            </a>
+            <a href="#reserve" className="hover:text-stone-600">
+              Reserve
+            </a>
+            <a href="#contact" className="hover:text-stone-600">
+              Contact
+            </a>
           </nav>
         </div>
       </header>
@@ -200,12 +216,12 @@ export default function HomePage() {
               Reserve
             </p>
             <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
-              Booking calendar and payment integration coming next.
+              Plan your stay with flexible booking options.
             </h2>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">
-              This section will soon let guests select dates, choose guest
-              count, pay online through Razorpay, or continue to WhatsApp for
-              cash bookings.
+              Choose your dates, guest count, and see an estimated total. You
+              can continue with online payment later, or confirm your booking by
+              WhatsApp for cash arrangements.
             </p>
 
             <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -221,29 +237,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 text-stone-900 shadow-2xl">
-            <div className="text-sm uppercase tracking-[0.25em] text-stone-500">
-              Booking widget placeholder
-            </div>
-
-            <div className="mt-6 grid gap-4">
-              <div className="rounded-2xl border border-stone-200 px-4 py-3">
-                Check-in
-              </div>
-              <div className="rounded-2xl border border-stone-200 px-4 py-3">
-                Check-out
-              </div>
-              <div className="rounded-2xl border border-stone-200 px-4 py-3">
-                Guests
-              </div>
-              <button className="rounded-2xl bg-stone-900 px-4 py-3 text-white">
-                Pay Online
-              </button>
-              <button className="rounded-2xl border border-stone-300 px-4 py-3 text-stone-900">
-                Book via WhatsApp / Cash
-              </button>
-            </div>
-          </div>
+          <BookingWidget />
         </div>
       </section>
 
