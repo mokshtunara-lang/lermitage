@@ -95,13 +95,8 @@ export default function BookingWidget() {
       .lt("check_in", checkOut)
       .gt("check_out", checkIn);
 
-    if (bookingError) {
-      throw bookingError;
-    }
-
-    if (bookingConflicts && bookingConflicts.length > 0) {
-      return true;
-    }
+    if (bookingError) throw bookingError;
+    if (bookingConflicts && bookingConflicts.length > 0) return true;
 
     const { data: blockedConflicts, error: blockedError } = await supabase
       .from("blocked_dates")
@@ -109,9 +104,7 @@ export default function BookingWidget() {
       .lt("start_date", checkOut)
       .gt("end_date", checkIn);
 
-    if (blockedError) {
-      throw blockedError;
-    }
+    if (blockedError) throw blockedError;
 
     return !!(blockedConflicts && blockedConflicts.length > 0);
   }
@@ -121,17 +114,17 @@ export default function BookingWidget() {
 
     if (!checkIn || !checkOut) {
       setMessage("Please select check-in and check-out dates.");
-      return false;
+      return { ok: false as const };
     }
 
     if (nights <= 0) {
       setMessage("Check-out must be after check-in.");
-      return false;
+      return { ok: false as const };
     }
 
     if (!name.trim() || !phone.trim()) {
       setMessage("Please enter your name and phone number.");
-      return false;
+      return { ok: false as const };
     }
 
     setIsSaving(true);
@@ -142,51 +135,142 @@ export default function BookingWidget() {
       if (conflict) {
         setMessage("Those dates are already unavailable. Please choose different dates.");
         setIsSaving(false);
-        return false;
+        return { ok: false as const };
       }
 
-      const { error } = await supabase.from("bookings").insert({
-        check_in: checkIn,
-        check_out: checkOut,
-        guests,
-        total_price: total,
-        payment_mode: paymentMode,
-        payment_status: paymentMode === "cash" ? "cash_pending" : "pending",
-        guest_name: name,
-        phone,
-        email,
-        notes: `Created from website booking widget. Nights: ${nights}. Pricing mode: ${
-          hasWeekend ? "Weekend rate" : "Weekday rate"
-        }`,
-      });
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert({
+          check_in: checkIn,
+          check_out: checkOut,
+          guests,
+          total_price: total,
+          payment_mode: paymentMode,
+          payment_status: paymentMode === "cash" ? "cash_pending" : "pending",
+          guest_name: name,
+          phone,
+          email,
+          notes: `Created from website booking widget. Nights: ${nights}. Pricing mode: ${
+            hasWeekend ? "Weekend rate" : "Weekday rate"
+          }`,
+        })
+        .select("id")
+        .single();
 
       if (error) {
         console.error("Supabase insert error:", error);
         setMessage(`Save failed: ${error.message}`);
         setIsSaving(false);
-        return false;
+        return { ok: false as const };
       }
 
       setIsSaving(false);
-      return true;
+      return { ok: true as const, bookingId: data.id as string };
     } catch (error: any) {
-      console.error("Conflict check error:", error);
+      console.error("Save/Conflict error:", error);
       setMessage(`Save failed: ${error.message || "Unknown error"}`);
       setIsSaving(false);
-      return false;
+      return { ok: false as const };
     }
   }
 
   async function handleCashBooking() {
-    const ok = await saveBooking("cash");
-    if (!ok) return;
+    const result = await saveBooking("cash");
+    if (!result.ok) return;
     window.open(whatsappUrl, "_blank");
   }
 
   async function handleOnlineBooking() {
-    const ok = await saveBooking("online");
-    if (!ok) return;
-    setMessage("Booking saved. Razorpay will be connected next.");
+    const result = await saveBooking("online");
+    if (!result.ok) return;
+
+    setMessage("Creating payment order...");
+
+    const orderRes = await fetch("/api/create-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: total,
+        bookingId: result.bookingId,
+      }),
+    });
+
+    const orderData = await orderRes.json();
+
+    if (!orderRes.ok) {
+      setMessage(orderData.error || "Failed to create Razorpay order");
+      console.error("Create order response:", orderData);
+      return;
+    }
+
+    const existingScript = document.getElementById("razorpay-checkout-script");
+
+    if (!existingScript) {
+      const script = document.createElement("script");
+      script.id = "razorpay-checkout-script";
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+
+      const loaded = new Promise<void>((resolve, reject) => {
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load Razorpay checkout."));
+      });
+
+      document.body.appendChild(script);
+      try {
+        await loaded;
+      } catch (error: any) {
+        setMessage(error.message || "Failed to load payment window.");
+        return;
+      }
+    }
+
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: "Lermitage Farms",
+      description: "Property Booking",
+      order_id: orderData.id,
+      prefill: {
+        name,
+        email,
+        contact: phone,
+      },
+      theme: {
+        color: "#1c1917",
+      },
+      handler: async function (response: any) {
+        const verifyRes = await fetch("/api/verify-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...response,
+            bookingId: result.bookingId,
+          }),
+        });
+
+        const verifyData = await verifyRes.json();
+
+        if (verifyData.success) {
+          setMessage("Payment successful. Your booking has been confirmed.");
+        } else {
+          setMessage(verifyData.error || "Payment verification failed.");
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          setMessage("Payment window closed.");
+        },
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+    razorpay.open();
   }
 
   return (
