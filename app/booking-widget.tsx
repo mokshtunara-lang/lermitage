@@ -41,9 +41,7 @@ function dateRangeIncludesWeekend(checkIn: string, checkOut: string) {
 
   while (current < end) {
     const day = current.getDay();
-    if (day === 5 || day === 6 || day === 0) {
-      return true;
-    }
+    if (day === 5 || day === 6 || day === 0) return true;
     current.setDate(current.getDate() + 1);
   }
 
@@ -89,6 +87,35 @@ export default function BookingWidget() {
     return `https://wa.me/917400077899?text=${text}`;
   }, [name, phone, email, checkIn, checkOut, guests, nights, total]);
 
+  async function hasDateConflict() {
+    const { data: bookingConflicts, error: bookingError } = await supabase
+      .from("bookings")
+      .select("id, check_in, check_out, payment_status")
+      .neq("payment_status", "cancelled")
+      .lt("check_in", checkOut)
+      .gt("check_out", checkIn);
+
+    if (bookingError) {
+      throw bookingError;
+    }
+
+    if (bookingConflicts && bookingConflicts.length > 0) {
+      return true;
+    }
+
+    const { data: blockedConflicts, error: blockedError } = await supabase
+      .from("blocked_dates")
+      .select("id, start_date, end_date")
+      .lt("start_date", checkOut)
+      .gt("end_date", checkIn);
+
+    if (blockedError) {
+      throw blockedError;
+    }
+
+    return !!(blockedConflicts && blockedConflicts.length > 0);
+  }
+
   async function saveBooking(paymentMode: "cash" | "online") {
     setMessage("");
 
@@ -109,30 +136,45 @@ export default function BookingWidget() {
 
     setIsSaving(true);
 
-    const { error } = await supabase.from("bookings").insert({
-      check_in: checkIn,
-      check_out: checkOut,
-      guests,
-      total_price: total,
-      payment_mode: paymentMode,
-      payment_status: paymentMode === "cash" ? "cash_pending" : "pending",
-      guest_name: name,
-      phone,
-      email,
-      notes: `Created from website booking widget. Nights: ${nights}. Pricing mode: ${
-        hasWeekend ? "Weekend rate" : "Weekday rate"
-      }`,
-    });
+    try {
+      const conflict = await hasDateConflict();
 
-    setIsSaving(false);
+      if (conflict) {
+        setMessage("Those dates are already unavailable. Please choose different dates.");
+        setIsSaving(false);
+        return false;
+      }
 
-    if (error) {
-  console.error("Supabase insert error:", error);
-  setMessage(`Save failed: ${error.message}`);
-  return false;
-}
+      const { error } = await supabase.from("bookings").insert({
+        check_in: checkIn,
+        check_out: checkOut,
+        guests,
+        total_price: total,
+        payment_mode: paymentMode,
+        payment_status: paymentMode === "cash" ? "cash_pending" : "pending",
+        guest_name: name,
+        phone,
+        email,
+        notes: `Created from website booking widget. Nights: ${nights}. Pricing mode: ${
+          hasWeekend ? "Weekend rate" : "Weekday rate"
+        }`,
+      });
 
-    return true;
+      if (error) {
+        console.error("Supabase insert error:", error);
+        setMessage(`Save failed: ${error.message}`);
+        setIsSaving(false);
+        return false;
+      }
+
+      setIsSaving(false);
+      return true;
+    } catch (error: any) {
+      console.error("Conflict check error:", error);
+      setMessage(`Save failed: ${error.message || "Unknown error"}`);
+      setIsSaving(false);
+      return false;
+    }
   }
 
   async function handleCashBooking() {
